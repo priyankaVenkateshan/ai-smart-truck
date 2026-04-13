@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS drivers (
 CREATE TABLE IF NOT EXISTS trucks (
   truck_id SERIAL PRIMARY KEY,
   driver_id INTEGER REFERENCES drivers(driver_id),
+  type TEXT,
   capacity_kg DOUBLE PRECISION NOT NULL,
   fuel_eff_kmpl DOUBLE PRECISION NOT NULL,
   location_lat DOUBLE PRECISION NOT NULL,
@@ -17,6 +18,9 @@ CREATE TABLE IF NOT EXISTS trucks (
   available BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Backfill for older DBs
+ALTER TABLE trucks ADD COLUMN IF NOT EXISTS type TEXT;
 
 CREATE TABLE IF NOT EXISTS deliveries (
   delivery_id SERIAL PRIMARY KEY,

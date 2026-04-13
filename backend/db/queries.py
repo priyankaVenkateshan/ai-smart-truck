@@ -58,7 +58,26 @@ def get_delivery_by_id(delivery_id: int) -> dict | None:
 def get_trucks_live() -> list[dict]:
     """All trucks with driver info, location, and availability."""
     sql = """
-        SELECT trucks.*, drivers.driver_name, drivers.driver_perf_score
+        SELECT
+            CASE (trucks.truck_id % 5)
+                WHEN 0 THEN 'Flatbed'
+                WHEN 1 THEN 'Refrigerated'
+                WHEN 2 THEN 'Container'
+                WHEN 3 THEN 'Tanker'
+                ELSE 'Mini Van'
+            END AS type,
+            trucks.truck_id,
+            trucks.driver_id,
+            trucks.capacity_kg,
+            trucks.fuel_eff_kmpl,
+            trucks.location_lat,
+            trucks.location_lng,
+            trucks.available,
+            CASE WHEN trucks.available THEN 'available' ELSE 'busy' END AS status,
+            (trucks.location_lat::text || ',' || trucks.location_lng::text) AS current_location,
+            trucks.capacity_kg AS capacity,
+            drivers.driver_name,
+            drivers.driver_perf_score
         FROM trucks
         JOIN drivers USING (driver_id)
         ORDER BY trucks.truck_id
@@ -69,6 +88,45 @@ def get_trucks_live() -> list[dict]:
             cur.execute(sql)
             rows = cur.fetchall()
         return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+def get_stats(*, fuel_price_per_l: float) -> dict:
+    """Return top-bar stats for the dashboard."""
+    conn = connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM trucks")
+            total_trucks = int(cur.fetchone()[0])
+            cur.execute("SELECT COUNT(*) FROM trucks WHERE available = TRUE")
+            available_trucks = int(cur.fetchone()[0])
+
+            cur.execute("SELECT COUNT(*) FROM deliveries")
+            total_deliveries = int(cur.fetchone()[0])
+            cur.execute("SELECT COUNT(*) FROM deliveries WHERE completed_at IS NOT NULL")
+            completed_deliveries = int(cur.fetchone()[0])
+
+            cur.execute("SELECT COUNT(*) FROM deliveries WHERE on_time IS NOT NULL")
+            rated = int(cur.fetchone()[0])
+            if rated:
+                cur.execute("SELECT COUNT(*) FROM deliveries WHERE on_time = TRUE")
+                on_time_true = int(cur.fetchone()[0])
+                on_time_pct = 100.0 * on_time_true / rated
+            else:
+                on_time_pct = None
+
+            cur.execute("SELECT AVG(predicted_fuel_l) FROM assignments")
+            avg_fuel_l = cur.fetchone()[0]
+            avg_fuel_cost = float(avg_fuel_l) * float(fuel_price_per_l) if avg_fuel_l is not None else None
+
+        return {
+            "total_trucks": total_trucks,
+            "available_trucks": available_trucks,
+            "total_deliveries": total_deliveries,
+            "completed_deliveries": completed_deliveries,
+            "on_time_pct": on_time_pct,
+            "avg_fuel_cost": avg_fuel_cost,
+        }
     finally:
         conn.close()
 
@@ -108,6 +166,68 @@ def insert_assignment(
             assignment_id = cur.fetchone()[0]
         conn.commit()
         return int(assignment_id)
+    finally:
+        conn.close()
+
+def get_truck_with_driver(truck_id: int) -> dict | None:
+    """Return a truck row joined with driver_name and driver_perf_score."""
+    sql = """
+        SELECT trucks.*, drivers.driver_name, drivers.driver_perf_score
+        FROM trucks
+        JOIN drivers USING (driver_id)
+        WHERE trucks.truck_id = %s
+        LIMIT 1
+    """
+    conn = connect()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(sql, (truck_id,))
+            row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def create_delivery(
+    *,
+    origin_lat: float,
+    origin_lng: float,
+    dest_lat: float,
+    dest_lng: float,
+    distance_km: float,
+    weight_kg: float,
+    hour_of_day: int,
+) -> dict:
+    """Insert a new delivery row and return it as a dict."""
+    sql = """
+        INSERT INTO deliveries (
+            origin_lat, origin_lng,
+            dest_lat, dest_lng,
+            distance_km, weight_kg, hour_of_day,
+            status
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING *
+    """
+    conn = connect()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                sql,
+                (
+                    origin_lat,
+                    origin_lng,
+                    dest_lat,
+                    dest_lng,
+                    distance_km,
+                    weight_kg,
+                    hour_of_day,
+                    "pending",
+                ),
+            )
+            row = cur.fetchone()
+        conn.commit()
+        return dict(row)
     finally:
         conn.close()
 

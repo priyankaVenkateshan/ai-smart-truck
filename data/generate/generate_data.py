@@ -14,6 +14,8 @@ log = logging.getLogger(__name__)
 
 fake = Faker()
 
+TRUCK_TYPES = ["Flatbed", "Refrigerated", "Container", "Tanker", "Mini Van"]
+
 
 @dataclass(frozen=True)
 class Bounds:
@@ -31,6 +33,30 @@ INDIA_BOUNDS = Bounds(
     lng_min=68.0,
     lng_max=88.0,
 )
+
+# India city centers + small random offset (keeps trucks on land for demos)
+cities = [
+    (28.6139, 77.2090),   # Delhi
+    (19.0760, 72.8777),   # Mumbai
+    (13.0827, 80.2707),   # Chennai
+    (22.5726, 88.3639),   # Kolkata
+    (12.9716, 77.5946),   # Bangalore
+    (17.3850, 78.4867),   # Hyderabad
+    (23.0225, 72.5714),   # Ahmedabad
+    (18.5204, 73.8567),   # Pune
+    (26.9124, 75.7873),   # Jaipur
+    (21.1458, 79.0882),   # Nagpur
+    (22.7196, 75.8577),   # Indore
+    (11.0168, 76.9558),   # Coimbatore
+    (25.3176, 82.9739),   # Varanasi
+    (30.7333, 76.7794),   # Chandigarh
+    (26.8467, 80.9462),   # Lucknow
+    (23.2599, 77.4126),   # Bhopal
+    (15.3173, 75.7139),   # Hubli
+    (9.9312,  76.2673),   # Kochi
+    (27.1767, 78.0081),   # Agra
+    (24.5854, 73.7125),   # Udaipur
+]
 
 
 def _rand_lat_lng(bounds: Bounds) -> tuple[float, float]:
@@ -71,14 +97,17 @@ def generate_trucks(n: int, driver_ids: list[int]) -> pd.DataFrame:
     """Build `n` synthetic truck rows referencing `driver_ids`."""
     rows = []
     for _ in range(n):
-        lat, lng = _rand_lat_lng(INDIA_BOUNDS)
+        chosen = random.choice(cities)
+        lat = round(chosen[0] + random.uniform(-0.25, 0.25), 6)
+        lng = round(chosen[1] + random.uniform(-0.25, 0.25), 6)
         rows.append(
             {
                 "driver_id": random.choice(driver_ids),
+                "type": random.choice(TRUCK_TYPES),
                 "capacity_kg": round(random.uniform(800.0, 8000.0), 1),
                 "fuel_eff_kmpl": round(random.uniform(2.5, 6.5), 2),
-                "location_lat": round(lat, 6),
-                "location_lng": round(lng, 6),
+                "location_lat": lat,
+                "location_lng": lng,
                 "available": True,
             }
         )

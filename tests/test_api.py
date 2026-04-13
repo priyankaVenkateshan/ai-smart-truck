@@ -40,6 +40,10 @@ def test_post_assign_returns_expected_json(client, monkeypatch):
         "backend.api.main.optimize",
         lambda d, t: {"routes": [{"delivery_id": 1, "truck_id": 7}]},
     )
+    monkeypatch.setattr(
+        "backend.api.main.queries.get_truck_with_driver",
+        lambda tid: {"truck_id": tid, "driver_name": "Priya Driver", "driver_perf_score": 0.91, "fuel_eff_kmpl": 4.5},
+    )
 
     class _P:
         def predict(self, features):
